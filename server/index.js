@@ -1,6 +1,8 @@
 const express = require("express");
+const path = require("path");
 const {
   client,
+  createTables,
   createFavorite,
   fetchUsers,
   fetchFavorites,
@@ -9,65 +11,81 @@ const {
 } = require("./db");
 
 const server = express();
-client.connect();
 
-server.use(express.json());
+async function startServer() {
+  try {
+    await client.connect();
+    console.log("Connected to DB");
 
-//Routes
-//GET /api/users
-server.get("/api/users", async(req, res, next) => {
-    try {
-        res.send(await fetchUsers());
-    } catch (ex) {
-        next(ex);
-    }
-});
+    await createTables();
+    console.log("Tables created");
 
-//GET /api/products
-server.get("/api/products", async(req, res, next) => {
-    try {
-        res.send(await fetchProducts());
-    } catch (ex) {
-        next(ex);
-    }
-});
+    server.use(express.json());
 
-//GET /api/users/:id/favorites
-server.get("/api/users/:id/favorites", async(req, res, next) => {
-    try {
-        res.send( await fetchFavorites ({ user_id: req.params.id}));
-    } catch (ex) {
-        next(ex);
-    }
-});
+    // Serve frontend static files from public folder
+    server.use(express.static(path.join(__dirname, "../public")));
 
-//POST /api/users/:id/favorites
-server.post("/api/users/:id/favorites", async(req, res, next) => {
-    try {
-        res.status(201).send(
-            await createFavorite ({
-                user_id: req.body.user,
-                product_id: req.params.id,
-            })
-        );
-    } catch (ex) {
-        next(ex);
-    }
-});
+    // API routes
+    server.get("/api/users", async (req, res, next) => {
+      try {
+        const users = await fetchUsers();
+        res.send(users);
+      } catch (err) {
+        next(err);
+      }
+    });
 
-//DELETE /api/users/:userId/favorites/:id
-server.delete("/api/users/:userId/favorites/:id", async(req, res, next) => {
-    try {
-        await destroyFavorite({ id: req.params.id, user_id: req.params.userId});
+    server.get("/api/products", async (req, res, next) => {
+      try {
+        const products = await fetchProducts();
+        res.send(products);
+      } catch (err) {
+        next(err);
+      }
+    });
+
+    server.get("/api/users/:id/favorites", async (req, res, next) => {
+      try {
+        const favorites = await fetchFavorites({ user_id: req.params.id });
+        res.send(favorites);
+      } catch (err) {
+        next(err);
+      }
+    });
+
+    server.post("/api/users/:id/favorites", async (req, res, next) => {
+      try {
+        const favorite = await createFavorite({
+          user_id: req.body.user,
+          product_id: req.params.id,
+        });
+        res.status(201).send(favorite);
+      } catch (err) {
+        next(err);
+      }
+    });
+
+    server.delete("/api/users/:userId/favorites/:id", async (req, res, next) => {
+      try {
+        await destroyFavorite({ id: req.params.id, user_id: req.params.userId });
         res.sendStatus(204);
-    } catch (ex) {
-        next(ex);
-    }
-});
+      } catch (err) {
+        next(err);
+      }
+    });
 
-server.use((err, req, res, next) => {
-    res.status(err.status || 500).send({ error: err.message || err });
-  });
-  
-  const port = process.env.PORT || 3000;
-  server.listen(port, () => console.log(`listening on port ${port}`));
+    // Error handler middleware
+    server.use((err, req, res, next) => {
+      res.status(err.status || 500).send({ error: err.message || err });
+    });
+
+    const port = process.env.PORT || 3000;
+    server.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+    });
+  } catch (error) {
+    console.error("Failed to start server:", error);
+  }
+}
+
+startServer();
